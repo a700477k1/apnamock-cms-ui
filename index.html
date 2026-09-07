@@ -1093,6 +1093,134 @@
         root.innerHTML = '<div class="alert alert-danger" style="margin: 20px;"><b>Error:</b> ' + escapeHtml(msg) + '</div>';
       }
     }
+
+    /* ---------- Popup/Overlay & Modal Helpers ---------- */
+    function openOverlay(id) {
+      const overlay = document.getElementById(id);
+      if (overlay) {
+        overlay.style.display = "flex";
+        overlay.classList.add("open");
+        document.body.style.overflow = "hidden";
+      }
+    }
+
+    function closeOverlay(id) {
+      const overlay = document.getElementById(id);
+      if (overlay) {
+        overlay.classList.remove("open");
+        overlay.style.display = "none";
+        document.body.style.overflow = "";
+      }
+    }
+
+    // Click outside overlay to close
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('overlay') && e.target.classList.contains('open')) {
+        closeOverlay(e.target.id);
+      }
+    });
+
+    function showConfirm(title, message, variant, confirmText) {
+      return new Promise(function(resolve) {
+        const overlay = document.getElementById("modalOverlay");
+        const titleEl = document.getElementById("modalTitle");
+        const bodyEl = document.getElementById("modalBody");
+        const confirmBtn = document.getElementById("modalConfirmBtn");
+        const cancelBtn = document.getElementById("modalCancelBtn");
+        const closeBtn = document.getElementById("modalCloseBtn");
+
+        if (!overlay) { resolve(confirm(message || title)); return; }
+
+        titleEl.textContent = title || "Confirm";
+        bodyEl.textContent = message || "";
+        
+        confirmBtn.className = "btn btn-sm btn-primary";
+        if (variant === "danger") confirmBtn.className = "btn btn-sm btn-danger danger";
+        else if (variant === "success") confirmBtn.className = "btn btn-sm btn-success success";
+        
+        confirmBtn.textContent = confirmText || "Confirm";
+
+        overlay.style.display = "flex";
+        overlay.classList.add("show");
+
+        const cleanup = function() {
+          overlay.style.display = "none";
+          overlay.classList.remove("show");
+          confirmBtn.removeEventListener("click", onConfirm);
+          cancelBtn.removeEventListener("click", onCancel);
+          closeBtn.removeEventListener("click", onCancel);
+          overlay.removeEventListener("click", onOverlayClick);
+        };
+
+        const onConfirm = function() { cleanup(); resolve(true); };
+        const onCancel = function() { cleanup(); resolve(false); };
+        const onOverlayClick = function(e) { if (e.target === overlay) onCancel(); };
+
+        confirmBtn.addEventListener("click", onConfirm);
+        cancelBtn.addEventListener("click", onCancel);
+        closeBtn.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOverlayClick);
+      });
+    }
+
+    function showPrompt(title, defaultValue, placeholder) {
+      return new Promise(function(resolve) {
+        const overlay = document.getElementById("modalOverlay");
+        const titleEl = document.getElementById("modalTitle");
+        const bodyEl = document.getElementById("modalBody");
+        const confirmBtn = document.getElementById("modalConfirmBtn");
+        const cancelBtn = document.getElementById("modalCancelBtn");
+        const closeBtn = document.getElementById("modalCloseBtn");
+
+        if (!overlay) { resolve(prompt(title, defaultValue || "")); return; }
+
+        titleEl.textContent = title || "Input";
+        bodyEl.innerHTML = `<input id="modalPromptInput" type="text" class="form-control" value="${escapeHtml(defaultValue || "")}" placeholder="${escapeHtml(placeholder || "")}" style="width:100%;">`;
+        
+        confirmBtn.className = "btn btn-sm btn-primary";
+        confirmBtn.textContent = "OK";
+
+        overlay.style.display = "flex";
+        overlay.classList.add("show");
+
+        setTimeout(function() {
+          const input = document.getElementById("modalPromptInput");
+          if (input) { input.focus(); input.select(); }
+        }, 100);
+
+        const cleanup = function() {
+          overlay.style.display = "none";
+          overlay.classList.remove("show");
+          confirmBtn.removeEventListener("click", onConfirm);
+          cancelBtn.removeEventListener("click", onCancel);
+          closeBtn.removeEventListener("click", onCancel);
+        };
+
+        const onConfirm = function() {
+          const input = document.getElementById("modalPromptInput");
+          const val = input ? input.value : "";
+          cleanup();
+          resolve(val);
+        };
+
+        const onCancel = function() {
+          cleanup();
+          resolve(null);
+        };
+
+        confirmBtn.addEventListener("click", onConfirm);
+        cancelBtn.addEventListener("click", onCancel);
+        closeBtn.addEventListener("click", onCancel);
+        
+        const inputEl = document.getElementById("modalPromptInput");
+        if (inputEl) {
+          inputEl.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") { e.preventDefault(); onConfirm(); }
+            if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+          });
+        }
+      });
+    }
     
     function getFieldValue(id, fallback) {
       const el = document.getElementById(id);
