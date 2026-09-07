@@ -1159,7 +1159,7 @@
     }
 
     /* ============================================================
-       TESTS LIST UI (Basic D1 Implementation)
+       TESTS LIST & EDITOR UI
     ============================================================ */
     function goTests() {
       setActiveNav("navTests");
@@ -1173,22 +1173,21 @@
         <div class="card-box mb-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0">Mock Tests</h5>
-            <button class="btn btn-primary btn-sm" onclick="alert('Create Test Form will go here!')">+ New Test</button>
+            <button class="btn btn-primary btn-sm" onclick="openTestCreateScreen()">+ New Test</button>
           </div>
           <table class="table table-sm">
-            <thead><tr><th>ID</th><th>Title</th><th>Status</th></tr></thead>
+            <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="testsTableBody">
-              ${skeletonTableRow_(3)} ${skeletonTableRow_(3)} ${skeletonTableRow_(3)}
+              ${skeletonTableRow_(4)} ${skeletonTableRow_(4)} ${skeletonTableRow_(4)}
             </tbody>
           </table>
         </div>
       `;
 
-      // CALLING D1 DATABASE VIA API WRAPPER
       callServer("listTests", { limit: 50 }, function(res) {
         const body = document.getElementById("testsTableBody");
         if (!res.items || res.items.length === 0) {
-          body.innerHTML = `<tr><td colspan="3" class="text-muted" style="text-align:center;padding:32px;">No tests found in D1.</td></tr>`;
+          body.innerHTML = `<tr><td colspan="4" class="text-muted" style="text-align:center;padding:32px;">No tests found in D1.</td></tr>`;
           return;
         }
         body.innerHTML = res.items.map(t => `
@@ -1196,10 +1195,130 @@
             <td>${escapeHtml(t.test_id)}</td>
             <td>${escapeHtml(t.title_en || 'Untitled')}</td>
             <td>${escapeHtml(t.status || 'draft')}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-primary" onclick="openTestEditScreen('${escapeHtml(t.test_id)}')">Edit</button>
+            </td>
           </tr>
         `).join("");
       }, function(err) {
-        document.getElementById("testsTableBody").innerHTML = `<tr><td colspan="3" style="color:var(--color-danger);">Error: ${escapeHtml(err.message)}</td></tr>`;
+        document.getElementById("testsTableBody").innerHTML = `<tr><td colspan="4" style="color:var(--color-danger);">Error: ${escapeHtml(err.message)}</td></tr>`;
+      });
+    }
+
+    function openTestCreateScreen() {
+      EDITING_TEST_ID = "";
+      renderTestEditorScreen({});
+    }
+
+    function openTestEditScreen(testId) {
+      showToast.info("Loading...", "Opening test editor");
+      callServer("getTestById", testId, function(t) {
+        EDITING_TEST_ID = testId;
+        renderTestEditorScreen(t);
+      }, function(err) {
+        showToast.error("Failed to load test", err.message);
+      });
+    }
+
+    function renderTestEditorScreen(t) {
+      t = t || {};
+      const isEdit = !!t.test_id;
+      setPageTitle(isEdit ? ("Edit " + t.test_id) : "New Test", isEdit ? "edit-3" : "file-plus");
+      setBreadcrumbs([
+        { label: "Home", icon: "home", onClick: "goDashboard()" },
+        { label: "Tests", icon: "file-text", onClick: "goTests()" },
+        { label: isEdit ? t.test_id : "New Test", icon: isEdit ? "edit-3" : "file-plus" }
+      ]);
+
+      document.getElementById("viewRoot").innerHTML = `
+        <div class="card-box mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">${isEdit ? "Edit Test " + escapeHtml(t.test_id) : "Create New Test"}</h5>
+            <button class="btn btn-outline-secondary btn-sm" onclick="goTests()">Back to Tests</button>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-3">
+              <label class="form-label">Status</label>
+              <select id="tf_status" class="form-select">
+                <option value="draft" ${t.status === 'draft' ? 'selected' : ''}>draft</option>
+                <option value="published" ${t.status === 'published' ? 'selected' : ''}>published</option>
+                <option value="archived" ${t.status === 'archived' ? 'selected' : ''}>archived</option>
+              </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">Exam Group</label><input id="tf_exam_group" class="form-control" value="${escapeHtml(t.exam_group || "")}"></div>
+            <div class="col-md-3"><label class="form-label">Exam</label><input id="tf_exam" class="form-control" value="${escapeHtml(t.exam || "")}"></div>
+            <div class="col-md-3">
+              <label class="form-label">Paper Type</label>
+              <select id="tf_paper_type" class="form-select">
+                <option value="Mock" ${t.paper_type === 'Mock' ? 'selected' : ''}>Mock</option>
+                <option value="PYQ" ${t.paper_type === 'PYQ' ? 'selected' : ''}>PYQ</option>
+                <option value="Practice" ${t.paper_type === 'Practice' ? 'selected' : ''}>Practice</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-4"><label class="form-label">Title EN</label><input id="tf_title_en" class="form-control" value="${escapeHtml(t.title_en || "")}"></div>
+            <div class="col-md-4"><label class="form-label">Title HI</label><input id="tf_title_hi" class="form-control" value="${escapeHtml(t.title_hi || "")}"></div>
+            <div class="col-md-3">
+              <label class="form-label">Language Mode</label>
+              <select id="tf_language_mode" class="form-select">
+                <option value="bilingual" ${t.language_mode === 'bilingual' ? 'selected' : ''}>bilingual</option>
+                <option value="en" ${t.language_mode === 'en' ? 'selected' : ''}>en</option>
+                <option value="hi" ${t.language_mode === 'hi' ? 'selected' : ''}>hi</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-3"><label class="form-label">Duration (min)</label><input id="tf_duration" type="number" class="form-control" value="${escapeHtml(t.duration || 60)}"></div>
+            <div class="col-md-3"><label class="form-label">Negative Marking</label><input id="tf_negative_marking" type="number" step="0.05" class="form-control" value="${escapeHtml(t.negative_marking || 0.25)}"></div>
+            <div class="col-md-3"><label class="form-label">Marks Per Q</label><input id="tf_marks_per_question" type="number" step="0.5" class="form-control" value="${escapeHtml(t.marks_per_question || 1)}"></div>
+            <div class="col-md-3">
+              <label class="form-label">Difficulty</label>
+              <select id="tf_difficulty" class="form-select">
+                <option value="Moderate" ${t.difficulty === 'Moderate' ? 'selected' : ''}>Moderate</option>
+                <option value="Easy" ${t.difficulty === 'Easy' ? 'selected' : ''}>Easy</option>
+                <option value="Hard" ${t.difficulty === 'Hard' ? 'selected' : ''}>Hard</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-3"><label class="form-label">Total Questions</label><input id="tf_total_questions" type="number" class="form-control" value="${escapeHtml(t.total_questions || 0)}"></div>
+            <div class="col-md-3"><label class="form-label">Total Marks</label><input id="tf_total_marks" type="number" class="form-control" value="${escapeHtml(t.total_marks || 0)}"></div>
+          </div>
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-primary" onclick="saveTestForm()">${isEdit ? "Update Test" : "Create Test"}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveTestForm() {
+      const payload = {
+        test_id: EDITING_TEST_ID,
+        status: document.getElementById("tf_status").value,
+        exam_group: document.getElementById("tf_exam_group").value,
+        exam: document.getElementById("tf_exam").value,
+        paper_type: document.getElementById("tf_paper_type").value,
+        title_en: document.getElementById("tf_title_en").value,
+        title_hi: document.getElementById("tf_title_hi").value,
+        language_mode: document.getElementById("tf_language_mode").value,
+        duration: document.getElementById("tf_duration").value,
+        negative_marking: document.getElementById("tf_negative_marking").value,
+        marks_per_question: document.getElementById("tf_marks_per_question").value,
+        difficulty: document.getElementById("tf_difficulty").value,
+        total_questions: document.getElementById("tf_total_questions").value,
+        total_marks: document.getElementById("tf_total_marks").value
+      };
+
+      showToast.info("Saving...", "Saving test details");
+      const fnName = EDITING_TEST_ID ? "updateTest" : "createTest";
+      
+      callServer(fnName, payload, function(res) {
+        showToast.success("Test saved!", res.test_id || EDITING_TEST_ID);
+        if (res.test_id) EDITING_TEST_ID = res.test_id;
+        goTests();
+      }, function(err) {
+        showToast.error("Save failed", err.message);
       });
     }
 
