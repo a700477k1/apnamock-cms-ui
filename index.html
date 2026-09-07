@@ -2025,6 +2025,300 @@
     async function bulkUnpublishTests() { const ids = getSelectedTestIds_(); if (ids.length === 0) return; const c = await showConfirm("Unpublish " + ids.length + " tests?", "Set to Draft.", "warning", "Unpublish All"); if (!c) return; callServer("bulkSetTestStatus", [ids, "draft"], function(res) { showToast.success("Done", res.updated + " unpublished"); clearBulkSelection_(); loadTestsList(false); }, function(err) { showToast.error("Failed", err.message); }); }
     async function bulkDeleteTests() { const ids = getSelectedTestIds_(); if (ids.length === 0) return; const c = await showConfirm("Delete " + ids.length + " tests?", "Permanently delete.", "danger", "Delete All"); if (!c) return; showToast.info("Deleting...", ids.length + " tests"); let s=0, f=0; ids.forEach(function(id) { callServer("deleteTestCascade", id, function() { s++; if(s+f===ids.length) { showToast.success("Done", s+" deleted, "+f+" failed"); clearBulkSelection_(); loadTestsList(false); } }, function() { f++; if(s+f===ids.length) { showToast.warning("Done", s+" deleted, "+f+" failed"); clearBulkSelection_(); loadTestsList(false); } }); }); }
 
+  <!-- ============================================================
+       QUESTIONS MODULE (Exact Replica)
+       (From Scripts_questions.html)
+    ============================================================ -->
+  <script>
+    let _questionsOffset = 0;
+    let _questionsHasMore = false;
+    let _questionsTotal = 0;
+    let _questionsSearchTimer = null;
+
+    function goQuestions(mode) {
+      setActiveNav("navQuestions");
+      setPageTitle("Questions", "help-circle");
+      setBreadcrumbs([
+        { label: "Home", icon: "home", onClick: "goDashboard()" },
+        { label: "Questions", icon: "help-circle" }
+      ]);
+
+      QUESTION_LIST_MODE = mode || "active";
+      EDITING_QUESTION_ID = "";
+
+      const modeTitle = QUESTION_LIST_MODE === "active" ? "Active Questions" : "Draft Questions";
+      const modeBtn = QUESTION_LIST_MODE === "active"
+        ? `<button class="btn btn-outline-primary" onclick="goQuestions('draft')">Draft Questions</button>`
+        : `<button class="btn btn-outline-success" onclick="goQuestions('active')" style="border:1px solid var(--color-success, #198754);color:var(--color-success, #198754);">Active Questions</button>`;
+
+      document.getElementById("viewRoot").innerHTML = `
+        <div class="card-box mb-3">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-6"><label class="form-label small text-muted mb-1">Search</label><input id="qq" class="form-control" placeholder="Search by ID, Text, Topic, Source Exam" oninput="debouncedLoadQuestions_()"></div>
+            <div class="col-md-2 d-grid"><button class="btn btn-primary" onclick="loadQuestions(false)">Apply</button></div>
+            <div class="col-md-2 d-grid"><button class="btn btn-success" onclick="openQuestionCreateScreen()">+ New Question</button></div>
+            <div class="col-md-2 d-grid">${modeBtn}</div>
+          </div>
+        </div>
+        <div class="card-box">
+          <table class="table table-sm">
+            <thead><tr><th>ID</th><th>Question EN</th><th>Topic</th><th>Difficulty</th><th>Active</th><th>Actions</th></tr></thead>
+            <tbody id="qBody"></tbody>
+          </table>
+        </div>
+      `;
+      
+      const tbody = document.getElementById("qBody");
+      tbody.innerHTML = "";
+      for (let i = 0; i < 5; i++) tbody.innerHTML += skeletonTableRow_(6);
+      
+      loadQuestions(false);
+      refreshIcons_();
+    }
+
+    function debouncedLoadQuestions_() {
+      clearTimeout(_questionsSearchTimer);
+      _questionsSearchTimer = setTimeout(function() { loadQuestions(false); }, 300);
+    }
+
+    function loadQuestions(loadMore) {
+      const params = {
+        q: getFieldValue("qq", ""),
+        is_active: QUESTION_LIST_MODE === "active",
+        limit: 50,
+        offset: loadMore ? _questionsOffset : 0
+      };
+      
+      const body = document.getElementById("qBody");
+      if (!body) return;
+      
+      if (!loadMore) {
+        body.innerHTML = "";
+        for (let i = 0; i < 5; i++) body.innerHTML += skeletonTableRow_(6);
+      }
+      
+      callServer("listQuestions", params, function (res) {
+        body.innerHTML = "";
+        _questionsOffset = params.offset + res.items.length;
+        _questionsHasMore = res.hasMore;
+        _questionsTotal = res.total;
+        
+        if (!res.items || res.items.length === 0) {
+          body.innerHTML = `<tr><td colspan="6" class="text-muted" style="text-align:center;padding:32px;">No questions found.</td></tr>`;
+          return;
+        }
+
+        res.items.forEach(function (q) {
+          body.innerHTML += `
+            <tr>
+              <td>${escapeHtml(q.question_id)}</td>
+              <td>${escapeHtml(stripHtml_(q.question_text_en).slice(0, 80))}</td>
+              <td>${escapeHtml(q.topic || "")}</td>
+              <td>${escapeHtml(q.difficulty || "")}</td>
+              <td>${q.is_active ? "Yes" : "No"}</td>
+              <td>
+                <button onclick="openQuestionEditScreen('${escapeHtml(q.question_id)}')" class="action-btn action-btn-edit" title="Edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+              </td>
+            </tr>
+          `;
+        });
+      }, renderError);
+    }
+
+    function openQuestionCreateScreen() {
+      EDITING_QUESTION_ID = "";
+      renderQuestionEditorScreen({});
+    }
+
+    function openQuestionEditScreen(questionId) {
+      showToast.info("Loading...", "Opening question editor");
+      callServer("getQuestionById", questionId, function (q) {
+        EDITING_QUESTION_ID = questionId;
+        renderQuestionEditorScreen(q);
+      }, function (err) { showToast.error("Failed to load", err.message); });
+    }
+
+    function renderQuestionEditorScreen(d) {
+      d = d || {};
+      const isEdit = !!d.question_id;
+      setPageTitle(isEdit ? ("Edit " + d.question_id) : "New Question", isEdit ? "edit-3" : "plus-circle");
+      setBreadcrumbs([
+        { label: "Home", icon: "home", onClick: "goDashboard()" },
+        { label: "Questions", icon: "help-circle", onClick: "goQuestions()" },
+        { label: isEdit ? d.question_id : "New Question", icon: isEdit ? "edit-3" : "plus-circle" }
+      ]);
+
+      document.getElementById("viewRoot").innerHTML = `
+        <div class="card-box mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">${isEdit ? "Edit Question " + escapeHtml(d.question_id) : "Create New Question"}</h5>
+            <button class="btn btn-outline-secondary btn-sm" onclick="goQuestions('${QUESTION_LIST_MODE}')">Back to Questions</button>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-3"><label class="form-label">Question Type</label><select id="f_question_type" class="form-select"><option value="mcq_single">mcq_single</option><option value="mcq_multi">mcq_multi</option></select></div>
+            <div class="col-md-2"><label class="form-label">Marks</label><input id="f_marks" type="number" class="form-control" value="${d.marks != null ? escapeHtml(d.marks) : '1'}"></div>
+            <div class="col-md-2"><label class="form-label">Negative</label><input id="f_negative_marks" type="number" class="form-control" value="${d.negative_marks != null ? escapeHtml(d.negative_marks) : '0.25'}"></div>
+            <div class="col-md-2"><label class="form-label">Correct Opt (0-4)</label><select id="f_correct_option" class="form-select"><option value="0">0 (A)</option><option value="1">1 (B)</option><option value="2">2 (C)</option><option value="3">3 (D)</option><option value="4">4 (E)</option></select></div>
+            <div class="col-md-3"><label class="form-label">Difficulty</label><select id="f_difficulty" class="form-select"><option value="Easy">Easy</option><option value="Moderate" selected>Moderate</option><option value="Hard">Hard</option></select></div>
+          </div>
+          <div class="mb-2"><label class="form-label">Question EN</label><div id="editor_q_en"></div></div>
+          <div class="mb-2"><label class="form-label">Question HI</label><div id="editor_q_hi"></div></div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label">Option A EN</label><div id="editor_a_en"></div></div>
+            <div class="col-md-6"><label class="form-label">Option A HI</label><div id="editor_a_hi"></div></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label">Option B EN</label><div id="editor_b_en"></div></div>
+            <div class="col-md-6"><label class="form-label">Option B HI</label><div id="editor_b_hi"></div></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label">Option C EN</label><div id="editor_c_en"></div></div>
+            <div class="col-md-6"><label class="form-label">Option C HI</label><div id="editor_c_hi"></div></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label">Option D EN</label><div id="editor_d_en"></div></div>
+            <div class="col-md-6"><label class="form-label">Option D HI</label><div id="editor_d_hi"></div></div>
+          </div>
+          <div class="mb-2"><label class="form-label">Explanation EN</label><div id="editor_expl_en"></div></div>
+          <div class="mb-2"><label class="form-label">Explanation HI</label><div id="editor_expl_hi"></div></div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label">Topic</label><input id="f_topic" class="form-control" value="${escapeHtml(d.topic || "")}"></div>
+            <div class="col-md-3"><label class="form-label">Is Active</label><select id="f_is_active" class="form-select"><option value="true" selected>True</option><option value="false">False</option></select></div>
+          </div>
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-primary" onclick="saveQuestionForm('active')">${isEdit ? "Update Active" : "Create Active"}</button>
+            <button class="btn btn-outline-primary" onclick="saveQuestionForm('draft')">${isEdit ? "Update Draft" : "Create Draft"}</button>
+          </div>
+        </div>
+        <div class="card-box">
+          <h5>Map This Question To Test</h5>
+          <div class="row g-2 align-items-end">
+            <div class="col-md-3"><input id="map_question_id" class="form-control" value="${escapeHtml(EDITING_QUESTION_ID || "")}" placeholder="Question ID"></div>
+            <div class="col-md-4"><select id="map_test" class="form-select"></select></div>
+            <div class="col-md-3"><select id="map_section" class="form-select"></select></div>
+            <div class="col-md-2 d-grid"><button class="btn btn-info" onclick="saveMap()">Map</button></div>
+          </div>
+        </div>
+      `;
+
+      // Initialize Quill Editors
+      const quillOptions = { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['clean']] } };
+      window._quillEditors = {};
+      window._quillEditors.q_en = new Quill('#editor_q_en', quillOptions);
+      window._quillEditors.q_hi = new Quill('#editor_q_hi', quillOptions);
+      window._quillEditors.a_en = new Quill('#editor_a_en', quillOptions);
+      window._quillEditors.a_hi = new Quill('#editor_a_hi', quillOptions);
+      window._quillEditors.b_en = new Quill('#editor_b_en', quillOptions);
+      window._quillEditors.b_hi = new Quill('#editor_b_hi', quillOptions);
+      window._quillEditors.c_en = new Quill('#editor_c_en', quillOptions);
+      window._quillEditors.c_hi = new Quill('#editor_c_hi', quillOptions);
+      window._quillEditors.d_en = new Quill('#editor_d_en', quillOptions);
+      window._quillEditors.d_hi = new Quill('#editor_d_hi', quillOptions);
+      window._quillEditors.expl_en = new Quill('#editor_expl_en', quillOptions);
+      window._quillEditors.expl_hi = new Quill('#editor_expl_hi', quillOptions);
+
+      // Set initial values if editing
+      window._quillEditors.q_en.root.innerHTML = d.question_text_en || "";
+      window._quillEditors.q_hi.root.innerHTML = d.question_text_hi || "";
+      window._quillEditors.a_en.root.innerHTML = d.option_a_en || "";
+      window._quillEditors.a_hi.root.innerHTML = d.option_a_hi || "";
+      window._quillEditors.b_en.root.innerHTML = d.option_b_en || "";
+      window._quillEditors.b_hi.root.innerHTML = d.option_b_hi || "";
+      window._quillEditors.c_en.root.innerHTML = d.option_c_en || "";
+      window._quillEditors.c_hi.root.innerHTML = d.option_c_hi || "";
+      window._quillEditors.d_en.root.innerHTML = d.option_d_en || "";
+      window._quillEditors.d_hi.root.innerHTML = d.option_d_hi || "";
+      window._quillEditors.expl_en.root.innerHTML = d.explanation_en || "";
+      window._quillEditors.expl_hi.root.innerHTML = d.explanation_hi || "";
+
+      // Load tests for mapping dropdown
+      loadTestsForMapping();
+      refreshIcons_();
+    }
+
+    function saveQuestionForm(mode) {
+      const q = window._quillEditors || {};
+      const payload = {
+        question_type: document.getElementById("f_question_type").value,
+        question_text_en: q.q_en ? q.q_en.root.innerHTML : "",
+        question_text_hi: q.q_hi ? q.q_hi.root.innerHTML : "",
+        option_a_en: q.a_en ? q.a_en.root.innerHTML : "",
+        option_a_hi: q.a_hi ? q.a_hi.root.innerHTML : "",
+        option_b_en: q.b_en ? q.b_en.root.innerHTML : "",
+        option_b_hi: q.b_hi ? q.b_hi.root.innerHTML : "",
+        option_c_en: q.c_en ? q.c_en.root.innerHTML : "",
+        option_c_hi: q.c_hi ? q.c_hi.root.innerHTML : "",
+        option_d_en: q.d_en ? q.d_en.root.innerHTML : "",
+        option_d_hi: q.d_hi ? q.d_hi.root.innerHTML : "",
+        correct_option: document.getElementById("f_correct_option").value,
+        marks: document.getElementById("f_marks").value,
+        negative_marks: document.getElementById("f_negative_marks").value,
+        difficulty: document.getElementById("f_difficulty").value,
+        topic: document.getElementById("f_topic").value,
+        explanation_en: q.expl_en ? q.expl_en.root.innerHTML : "",
+        explanation_hi: q.expl_hi ? q.expl_hi.root.innerHTML : "",
+        is_active: mode === 'active'
+      };
+
+      showToast.info("Saving...", "Saving question");
+      if (EDITING_QUESTION_ID) {
+        payload.question_id = EDITING_QUESTION_ID;
+        callServer("updateQuestion", payload, function () {
+          showToast.success("Question updated", "(" + mode + ")");
+        }, function (err) { showToast.error("Update failed", err.message); });
+      } else {
+        callServer("createQuestion", payload, function (res) {
+          EDITING_QUESTION_ID = res.question_id;
+          document.getElementById("map_question_id").value = res.question_id;
+          showToast.success("Question created", res.question_id + " (" + mode + ")");
+        }, function (err) { showToast.error("Create failed", err.message); });
+      }
+    }
+
+    function loadTestsForMapping() {
+      const ts = document.getElementById("map_test");
+      const ss = document.getElementById("map_section");
+      if (!ts || !ss) return;
+      ts.innerHTML = `<option value="">Loading tests...</option>`;
+      ss.innerHTML = `<option value="">Select section</option>`;
+      
+      callServer("listTestsLite", null, function (tests) {
+        ts.innerHTML = `<option value="">Select test</option>`;
+        tests.forEach(function (t) {
+          ts.innerHTML += `<option value="${escapeHtml(t.test_id)}">${escapeHtml(t.test_id)} - ${escapeHtml(t.title_en || "")}</option>`;
+        });
+        ts.onchange = function () { loadSectionsForTest(ts.value); };
+      }, renderError);
+    }
+
+    function loadSectionsForTest(testId) {
+      const ss = document.getElementById("map_section");
+      if (!testId) { ss.innerHTML = `<option value="">Select section</option>`; return; }
+      ss.innerHTML = `<option value="">Loading sections...</option>`;
+      callServer("listSectionsByTest", testId, function (sections) {
+        ss.innerHTML = `<option value="">Select section</option>`;
+        sections.forEach(function (s) {
+          ss.innerHTML += `<option value="${escapeHtml(s.section_id)}">${escapeHtml(s.section_id)} - ${escapeHtml(s.title_en || "")}</option>`;
+        });
+      }, renderError);
+    }
+
+    function saveMap() {
+      const payload = {
+        question_id: document.getElementById("map_question_id").value,
+        test_id: document.getElementById("map_test").value,
+        section_id: document.getElementById("map_section").value
+      };
+      if (!payload.question_id) return showToast.warning("Enter Question ID");
+      if (!payload.test_id) return showToast.warning("Select Test");
+      if (!payload.section_id) return showToast.warning("Select Section");
+      
+      callServer("mapQuestionToTest", payload, function (res) {
+        showToast.success("Mapped", res.mapping_id);
+      }, function (err) { showToast.error("Mapping failed", err.message); });
+    }
+  </script>
+    
     // Initialize the app
     bootstrap();
   </script>
