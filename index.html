@@ -1214,13 +1214,17 @@
     }
 
     /* ============================================================
-       TESTS & SECTIONS MODULE (Exact Replica)
+       TESTS & SECTIONS MODULE (Exact Replica with Filters & Sort)
     ============================================================ */
 
     let _testsOffset = 0;
     let _testsHasMore = false;
     let _testsTotal = 0;
     let _testsSearchTimer = null;
+    const State = {
+      filters: { exam: [], actualExam: [], year: [], subject: [], paperType: [], difficulty: [], attempt: null },
+      sort: null
+    };
 
     function goTests(mode) {
       setActiveNav("navTests");
@@ -1262,6 +1266,14 @@
             </div>
           </div>
           
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted small">Total: <strong id="testsTotalCount">0</strong></span>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-secondary btn-sm" id="filterBtn" onclick="openOverlay('filterOverlay')"><i data-lucide="filter" style="width:14px;height:14px;"></i> Filter</button>
+              <button class="btn btn-outline-secondary btn-sm" id="sortBtn" onclick="openOverlay('sortOverlay')"><i data-lucide="arrow-up-wide-short" style="width:14px;height:14px;"></i> Sort</button>
+            </div>
+          </div>
+          
           <table class="table table-sm">
             <thead>
               <tr>
@@ -1278,7 +1290,55 @@
             <tbody id="testsBody"></tbody>
           </table>
         </div>
+        
+        <!-- FILTER OVERLAY -->
+        <div class="overlay" id="filterOverlay">
+          <div class="popup">
+            <div class="popup-header">
+              <span class="popup-title">Filter Tests</span>
+              <button class="popup-close" onclick="closeOverlay('filterOverlay')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="popup-body">
+              <div class="mb-3"><div class="form-label small text-muted">By Exam Group</div><div class="d-flex flex-wrap gap-2" id="filterExams"></div></div>
+              <div class="mb-3"><div class="form-label small text-muted">By Year</div><div class="d-flex flex-wrap gap-2" id="filterYears"></div></div>
+              <div class="mb-3"><div class="form-label small text-muted">By Subject</div><div class="d-flex flex-wrap gap-2" id="filterSubjects"></div></div>
+              <div class="mb-3"><div class="form-label small text-muted">By Paper Type</div><div class="d-flex flex-wrap gap-2" id="filterPaperTypes"></div></div>
+              <div class="mb-3"><div class="form-label small text-muted">By Difficulty</div><div class="d-flex flex-wrap gap-2" id="filterDifficulty"></div></div>
+            </div>
+            <div class="popup-footer">
+              <button class="btn btn-outline-secondary btn-sm" onclick="clearAllFilters()">Clear All</button>
+              <button class="btn btn-primary btn-sm" style="flex:1" onclick="applyFilters()">Apply Filters</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SORT OVERLAY -->
+        <div class="overlay" id="sortOverlay">
+          <div class="popup">
+            <div class="popup-header">
+              <span class="popup-title">Sort Tests</span>
+              <button class="popup-close" onclick="closeOverlay('sortOverlay')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="popup-body">
+              <div class="d-flex flex-column gap-2" id="sortOptions">
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="year-desc">Latest Year First</button>
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="year-asc">Oldest Year First</button>
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="duration-asc">Shortest Duration First</button>
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="duration-desc">Longest Duration First</button>
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="marks-desc">Highest Marks First</button>
+                <button class="btn btn-outline-primary btn-sm text-start" data-sort="questions-desc">Most Questions First</button>
+              </div>
+            </div>
+            <div class="popup-footer">
+              <button class="btn btn-primary btn-sm" style="width:100%" onclick="applySort()">Apply Sort</button>
+            </div>
+          </div>
+        </div>
       `;
+      
+      // Initialize filters and sort UI
+      buildFilterOptions();
+      setupSortListeners();
       
       const tbody = document.getElementById("testsBody");
       if (tbody) {
@@ -1288,6 +1348,63 @@
       
       loadTestsList(false);
       refreshIcons_();
+    }
+
+    function buildFilterOptions() {
+      // In a real scenario, you'd fetch these from the API. Hardcoding for now.
+      const exams = ['SSC', 'Banking', 'Railway', 'Teaching'];
+      const years = ['2024', '2023', '2022'];
+      const subjects = ['Maths', 'English', 'GK', 'Reasoning'];
+      const paperTypes = ['Mock', 'PYQ', 'Practice'];
+      const difficulties = ['Easy', 'Moderate', 'Hard'];
+
+      const renderChips = (containerId, values, type) => {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = values.map(v => 
+          `<button class="btn btn-sm btn-outline-secondary" data-type="${type}" data-value="${v}" onclick="this.classList.toggle('active')">${v}</button>`
+        ).join("");
+      };
+      
+      renderChips('filterExams', exams, 'exam_group');
+      renderChips('filterYears', years, 'year');
+      renderChips('filterSubjects', subjects, 'subject');
+      renderChips('filterPaperTypes', paperTypes, 'paperType');
+      renderChips('filterDifficulty', difficulties, 'difficulty');
+    }
+
+    function setupSortListeners() {
+      document.querySelectorAll('#sortOptions button').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#sortOptions button').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+        });
+      });
+    }
+
+    function applyFilters() {
+      State.filters = { exam: [], actualExam: [], year: [], subject: [], paperType: [], difficulty: [], attempt: null };
+      document.querySelectorAll('#filterOverlay .active').forEach(btn => {
+        const type = btn.dataset.type;
+        const val = btn.dataset.value;
+        if (State.filters[type]) State.filters[type].push(val);
+      });
+      closeOverlay('filterOverlay');
+      loadTestsList(false);
+    }
+
+    function applySort() {
+      const selected = document.querySelector('#sortOptions .active');
+      State.sort = selected ? selected.dataset.sort : null;
+      closeOverlay('sortOverlay');
+      loadTestsList(false);
+    }
+
+    function clearAllFilters() {
+      document.querySelectorAll('#filterOverlay .active').forEach(btn => btn.classList.remove('active'));
+      State.filters = { exam: [], actualExam: [], year: [], subject: [], paperType: [], difficulty: [], attempt: null };
+      loadTestsList(false);
+      closeOverlay('filterOverlay');
     }
 
     function debouncedLoadTests_() {
@@ -1300,7 +1417,9 @@
         q: getFieldValue("tq", ""),
         status: TEST_LIST_MODE,
         limit: 50,
-        offset: loadMore ? _testsOffset : 0
+        offset: loadMore ? _testsOffset : 0,
+        sort: State.sort,
+        ...State.filters
       };
       
       const body = document.getElementById("testsBody");
@@ -1320,6 +1439,9 @@
         _testsHasMore = res.hasMore;
         _testsTotal = res.total;
         
+        const totalEl = document.getElementById("testsTotalCount");
+        if (totalEl) totalEl.textContent = res.total;
+
         if (!res.items || res.items.length === 0) {
           body.innerHTML = `<tr><td colspan="8" class="text-muted" style="text-align:center;padding:32px;">No tests found. Click "+ New" to create one.</td></tr>`;
           updateTestsLoadMoreBtn_();
@@ -1341,6 +1463,8 @@
               <td>${escapeHtml(t.total_questions || 0)}</td>
               <td style="white-space:nowrap;text-align:right;padding:8px 12px;">
                 <button onclick="openTestEditScreen('${escapeHtml(t.test_id)}')" class="action-btn action-btn-edit" title="Edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                <button onclick="alert('Preview: ${escapeHtml(t.test_id)}')" class="action-btn action-btn-preview" title="Preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+                <button onclick="alert('Clone: ${escapeHtml(t.test_id)}')" class="action-btn action-btn-publish" title="Clone"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                 ${canAdmin ? `<button onclick="setStatusAndRefresh('${escapeHtml(t.test_id)}','${toggle}')" class="action-btn action-btn-publish" title="${toggle === "published" ? "Publish" : "Unpublish"}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${toggle === "published" ? '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>' : '<circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>'}</svg></button>` : ""}
                 ${canAdmin ? `<button onclick="deleteTestRow('${escapeHtml(t.test_id)}')" class="action-btn action-btn-delete" title="Delete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>` : ""}
               </td>
