@@ -1478,27 +1478,29 @@
       refreshIcons_();
     }
 
-    function buildFilterOptions() {
-      // In a real scenario, you'd fetch these from the API. Hardcoding for now.
-      const exams = ['SSC', 'Banking', 'Railway', 'Teaching'];
-      const years = ['2024', '2023', '2022'];
-      const subjects = ['Maths', 'English', 'GK', 'Reasoning'];
-      const paperTypes = ['Mock', 'PYQ', 'Practice'];
-      const difficulties = ['Easy', 'Moderate', 'Hard'];
-
-      const renderChips = (containerId, values, type) => {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        container.innerHTML = values.map(v => 
-          `<button class="btn btn-sm btn-outline-secondary" data-type="${type}" data-value="${v}" onclick="this.classList.toggle('active')">${v}</button>`
-        ).join("");
-      };
-      
-      renderChips('filterExams', exams, 'exam_group');
-      renderChips('filterYears', years, 'year');
-      renderChips('filterSubjects', subjects, 'subject');
-      renderChips('filterPaperTypes', paperTypes, 'paperType');
-      renderChips('filterDifficulty', difficulties, 'difficulty');
+    async function buildFilterOptions() {
+      // Fetch distinct filter values from D1
+      callServer("getTestFilters", null, function(data) {
+        const renderChips = (containerId, values, type) => {
+          const container = document.getElementById(containerId);
+          if (!container) return;
+          if (!values || values.length === 0) {
+            container.innerHTML = `<small class="text-muted">No options available</small>`;
+            return;
+          }
+          container.innerHTML = values.map(v => 
+            `<button class="btn btn-sm btn-outline-secondary" data-type="${type}" data-value="${escapeHtml(v)}" onclick="this.classList.toggle('active')">${escapeHtml(v)}</button>`
+          ).join("");
+        };
+        
+        renderChips('filterExams', data.exam_group || [], 'exam_group');
+        renderChips('filterYears', data.year || [], 'year');
+        renderChips('filterSubjects', data.subject || [], 'subject');
+        renderChips('filterPaperTypes', data.paper_type || [], 'paper_type');
+        renderChips('filterDifficulty', data.difficulty || ['Easy', 'Moderate', 'Hard'], 'difficulty');
+      }, function(err) {
+        console.error("Failed to load filter options", err);
+      });
     }
 
     function setupSortListeners() {
