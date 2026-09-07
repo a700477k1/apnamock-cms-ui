@@ -1082,6 +1082,17 @@
         }
       }
     };
+
+    /* ---------- Error Rendering Helper ---------- */
+    function renderError(err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      const root = document.getElementById("viewRoot");
+      const badge = document.getElementById("userBadge");
+      if (badge) badge.textContent = "Request failed";
+      if (root) {
+        root.innerHTML = '<div class="alert alert-danger" style="margin: 20px;"><b>Error:</b> ' + escapeHtml(msg) + '</div>';
+      }
+    }
     
     function getFieldValue(id, fallback) {
       const el = document.getElementById(id);
